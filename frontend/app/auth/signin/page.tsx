@@ -48,7 +48,21 @@ export default function SignIn() {
   }
 
   const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl: '/todos' })
+    // Use NextAuth's built-in popup flow
+    signIn('google', { 
+      callbackUrl: '/todos',
+      redirect: false 
+    }).then((result) => {
+      if (result?.ok) {
+        toast.success('Signed in successfully!')
+        router.push('/todos')
+      } else {
+        toast.error('Sign in failed')
+      }
+    }).catch((error) => {
+      toast.error('Sign in failed')
+      console.error('Google sign in error:', error)
+    })
   }
 
   return (

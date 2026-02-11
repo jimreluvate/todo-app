@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/utils/auth'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001' || 'http://localhost:8000'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -49,13 +49,14 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // In a real app, you'd pass the session token here
       },
       body: JSON.stringify({ title, completed: completed || false }),
     })
 
     if (!response.ok) {
-      throw new Error('Failed to create todo')
+      const errorText = await response.text()
+      console.error('Backend error:', errorText)
+      throw new Error(`Failed to create todo (${response.status}): ${errorText}`)
     }
 
     const newTodo = await response.json()

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 
 interface Todo {
-  id: number
+  id: string
   title: string
   completed: boolean
   created_at: string
@@ -133,7 +133,7 @@ export default function TodosPage() {
               value={newTodo}
               onChange={(e) => setNewTodo(e.target.value)}
               placeholder="Add a new todo..."
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-700"
             />
             <button
               type="submit"

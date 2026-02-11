@@ -24,7 +24,7 @@ export default function ResendVerificationPage() {
     setIsLoading(true)
 
     try {
-      const response = await fetch('http://localhost:8001/api/users/resend-verification/', {
+      const response = await fetch('http://127.0.0.1:8000/api/users/resend-verification/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
