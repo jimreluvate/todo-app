@@ -1,182 +1,216 @@
 'use client'
 
-import { useSession, signOut } from "next-auth/react"
-import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import React, { useEffect, useState } from 'react'
+import { useSession, signOut } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import { useTodoStore, Todo } from '@/lib/store'
+import { TodoApi } from '@/lib/api'
+import { TodoList } from '@/components/todos/todo-list'
+import { TodoForm } from '@/components/todos/todo-form'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 
-interface Todo {
-  id: string
-  title: string
-  completed: boolean
-  created_at: string
-  updated_at: string
+// Simple cn function for now
+function cn(...classes: string[]) {
+  return classes.filter(Boolean).join(' ')
 }
 
 export default function TodosPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const [todos, setTodos] = useState<Todo[]>([])
-  const [newTodo, setNewTodo] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
+  const {
+    todos,
+    isLoading,
+    error,
+    optimisticAdd,
+    optimisticUpdate,
+    optimisticDelete,
+    confirmOptimistic,
+    rollbackOptimistic,
+    setLoading,
+    setError
+  } = useTodoStore()
 
+  const [isOnline, setIsOnline] = useState(true)
+
+  // Initialize WebSocket connection (disabled for now)
+  // useEffect(() => {
+  //   todoWebSocket.connect()
+  //   
+  //   const handleRealTimeUpdate = (event: CustomEvent) => {
+  //     const { detail } = event
+  //     confirmOptimistic(detail.data.id, detail.data.todo)
+  //   }
+  // 
+  //   window.addEventListener('todo-update', handleRealTimeUpdate as EventListener)
+  //   
+  //   return () => {
+  //     window.removeEventListener('todo-update', handleRealTimeUpdate as EventListener)
+  //     todoWebSocket.disconnect()
+  //   }
+  // }, [])
+
+  // Load initial todos
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/auth/signin')
-    } else if (status === 'authenticated') {
-      fetchTodos()
-    }
-  }, [status, router])
-
-  const fetchTodos = async () => {
-    try {
-      const response = await fetch('/api/todos')
-      if (response.ok) {
-        const data = await response.json()
-        setTodos(data)
+    if (status === 'loading') return
+    
+    const loadTodos = async () => {
+      try {
+        setLoading(true)
+        const todos = await TodoApi.getTodos()
+        useTodoStore.setState({ todos })
+      } catch (error) {
+        setError('Failed to load todos')
+      } finally {
+        setLoading(false)
       }
+    }
+
+    loadTodos()
+  }, [status])
+
+  // Network status
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  const handleAddTodo = async (todo: Omit<Todo, 'id'>) => {
+    try {
+      setLoading(true)
+      optimisticAdd(todo)
+      
+      const newTodo = await TodoApi.createTodo(todo)
+      confirmOptimistic(newTodo.id, newTodo)
     } catch (error) {
-      console.error('Failed to fetch todos:', error)
+      // Get the optimistic todo ID from the store
+      const optimisticTodo = todos.find(t => t.isOptimistic && t.title === todo.title)
+      if (optimisticTodo) {
+        rollbackOptimistic(optimisticTodo.id)
+      }
+      setError('Failed to create todo')
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
-  const addTodo = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newTodo.trim()) return
-
+  const handleUpdateTodo = async (id: string, updates: Partial<Todo>) => {
     try {
-      const response = await fetch('/api/todos', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ title: newTodo, completed: false }),
-      })
-
-      if (response.ok) {
-        const todo = await response.json()
-        setTodos([...todos, todo])
-        setNewTodo('')
-      }
+      optimisticUpdate(id, updates)
+      const updatedTodo = await TodoApi.updateTodo(id, updates)
+      confirmOptimistic(id, updatedTodo)
     } catch (error) {
-      console.error('Failed to add todo:', error)
+      rollbackOptimistic(id)
+      setError('Failed to update todo')
     }
   }
 
-  const toggleTodo = async (id: string) => {
-    const todo = todos.find(t => t.id === id)
-    if (!todo) return
-
+  const handleDeleteTodo = async (id: string) => {
     try {
-      const response = await fetch(`/api/todos/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ completed: !todo.completed }),
-      })
-
-      if (response.ok) {
-        const updatedTodo = await response.json()
-        setTodos(todos.map(t => t.id === id ? updatedTodo : t))
-      }
+      optimisticDelete(id)
+      await TodoApi.deleteTodo(id)
+      // Remove from state after successful deletion
+      useTodoStore.setState({ todos: todos.filter(todo => todo.id !== id && !todo.id.startsWith('temp-')) })
     } catch (error) {
-      console.error('Failed to update todo:', error)
+      rollbackOptimistic(id)
+      setError('Failed to delete todo')
     }
   }
 
-  const deleteTodo = async (id: string) => {
-    try {
-      const response = await fetch(`/api/todos/${id}`, {
-        method: 'DELETE',
-      })
-
-      if (response.ok) {
-        setTodos(todos.filter(t => t.id !== id))
-      }
-    } catch (error) {
-      console.error('Failed to delete todo:', error)
-    }
+  const handleSignOut = () => {
+    signOut({ redirect: false })
+    router.push('/auth/signin')
   }
 
-  if (status === 'loading' || isLoading) {
-    return <div className="flex justify-center items-center min-h-screen">Loading...</div>
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="flex items-center space-x-3">
+          <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+          <span className="text-gray-600">Loading...</span>
+        </div>
+      </div>
+    )
   }
 
   if (!session) {
     return null
   }
 
+  const completedCount = todos.filter(todo => todo.completed && !todo.isOptimistic).length
+  const totalCount = todos.filter(todo => !todo.isOptimistic).length
+  const completionRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
+
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">My Todos</h1>
-          <div className="flex items-center space-x-4">
-            <span className="text-sm text-gray-600">
-              {session.user?.email}
-            </span>
-            <button
-              onClick={() => signOut()}
-              className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium"
-            >
-              Sign Out
-            </button>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-4xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900">Todos</h1>
+              <p className="text-sm text-gray-600 mt-1">
+                {completionRate}% complete • {completedCount} of {totalCount} tasks
+              </p>
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <div className={cn(
+                  'w-2 h-2 rounded-full',
+                  isOnline ? 'bg-green-500' : 'bg-red-500'
+                )} />
+                <span>{isOnline ? 'Online' : 'Offline'}</span>
+              </div>
+              
+              <Button variant="ghost" size="sm" onClick={handleSignOut}>
+                Sign out
+              </Button>
+            </div>
           </div>
         </div>
+      </div>
 
-        <form onSubmit={addTodo} className="mb-8">
-          <div className="flex space-x-2">
-            <input
-              type="text"
-              value={newTodo}
-              onChange={(e) => setNewTodo(e.target.value)}
-              placeholder="Add a new todo..."
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-700"
-            />
-            <button
-              type="submit"
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-md font-medium"
-            >
-              Add Todo
-            </button>
-          </div>
-        </form>
-
-        <div className="space-y-2">
-          {todos.length === 0 ? (
-            <p className="text-center text-gray-500 py-8">No todos yet. Add one above!</p>
-          ) : (
-            todos.map((todo) => (
-              <div
-                key={todo.id}
-                className="flex items-center justify-between p-4 bg-white rounded-lg shadow border border-gray-200"
-              >
-                <div className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    checked={todo.completed}
-                    onChange={() => toggleTodo(todo.id)}
-                    className="h-5 w-5 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                  />
-                  <span
-                    className={`${
-                      todo.completed ? 'line-through text-gray-500' : 'text-gray-900'
-                    }`}
-                  >
-                    {todo.title}
-                  </span>
+      {/* Main Content */}
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <div className="space-y-8">
+          {/* Add Todo Form */}
+          <TodoForm onAdd={handleAddTodo} isLoading={isLoading} />
+          
+          {/* Error Display */}
+          {error && (
+            <Card className="p-4 border-red-200 bg-red-50">
+              <div className="flex items-center space-x-3">
+                <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center">
+                  <svg className="w-3 h-3 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0H5a1 1 0 00-2 0v12a1 1 0 002 0h6a1 1 0 002-0V5a1 1 0 00-2-2H8a1 1 0 00-2 2v6z" clipRule="evenodd" />
+                  </svg>
                 </div>
-                <button
-                  onClick={() => deleteTodo(todo.id)}
-                  className="text-red-600 hover:text-red-800 font-medium"
-                >
-                  Delete
-                </button>
+                <div>
+                  <h3 className="text-sm font-medium text-red-800">Something went wrong</h3>
+                  <p className="text-sm text-red-700 mt-1">{error}</p>
+                  <Button variant="ghost" size="sm" onClick={() => setError(null)} className="mt-2">
+                    Dismiss
+                  </Button>
+                </div>
               </div>
-            ))
+            </Card>
           )}
+          
+          {/* Todo List */}
+          <TodoList
+            todos={todos}
+            onUpdate={handleUpdateTodo}
+            onDelete={handleDeleteTodo}
+          />
         </div>
       </div>
     </div>
