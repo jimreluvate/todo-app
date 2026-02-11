@@ -14,7 +14,7 @@ export default function VerifyEmailPage({ params }: { params: { token: string } 
   useEffect(() => {
     const verifyEmail = async () => {
       try {
-        const response = await fetch(`http://localhost:8000/api/users/verify/${token}/`, {
+        const response = await fetch(`http://localhost:8001/api/users/verify/${token}/`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',

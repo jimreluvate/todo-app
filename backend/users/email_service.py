@@ -4,7 +4,7 @@ from django.template.loader import render_to_string
 from .models import EmailVerificationToken
 import resend
 
-resend.api_key = "re_6AreUTCC_PZiEadZ6RvndTKZaze6xn67D"
+resend.api_key = os.getenv('RESEND_API')
 
 def send_verification_email(user):
     """Send verification email to user"""
