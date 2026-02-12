@@ -1,3 +1,5 @@
+annotated-types==0.7.0
+anyio==4.12.1
 asgiref==3.11.1
 boto3==1.42.46
 botocore==1.42.46
@@ -17,6 +19,9 @@ djangorestframework==3.16.1
 djangorestframework_simplejwt==5.5.1
 djoser==2.3.3
 gunicorn==25.0.3
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
 idna==3.11
 jmespath==1.1.0
 msgpack==1.1.2
@@ -25,6 +30,8 @@ packaging==26.0
 psycopg2==2.9.11
 psycopg2-binary==2.9.11
 pycparser==3.0
+pydantic==2.12.5
+pydantic_core==2.41.5
 PyJWT==2.11.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.1
@@ -38,5 +45,9 @@ six==1.17.0
 social-auth-app-django==5.7.0
 social-auth-core==4.8.5
 sqlparse==0.5.5
+typing-inspection==0.4.2
 typing_extensions==4.15.0
 urllib3==2.6.3
+vercel==0.3.8
+vercel-sandbox==0.0.5
+websockets==16.0

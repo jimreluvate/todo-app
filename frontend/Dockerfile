@@ -1,5 +1,5 @@
-# Use Node.js 18 Alpine image
-FROM node:18-alpine
+# Use Node.js 24 LTS Alpine image (minimum required for Prisma)
+FROM node:24-alpine
 
 # Set environment variables
 ENV NODE_ENV=production
