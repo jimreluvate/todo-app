@@ -7,45 +7,93 @@ services:
     container_name: todo-app-db
     environment:
       POSTGRES_DB: todo_app
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
+      POSTGRES_USER: ${DB_USER:-jimang}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-jianmings}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5433}:5432"
     networks:
       - todo-network
     restart: unless-stopped
+    profiles:
+      - development
+      - production
 
   # Redis for caching and sessions
   redis:
     image: redis:7-alpine
     container_name: todo-app-redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     networks:
       - todo-network
     restart: unless-stopped
+    profiles:
+      - development
+      - production
 
-  # Django Backend
-  backend:
+  # Django Backend - Development
+  backend-dev:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: todo-app-backend
+    container_name: todo-app-backend-dev
+    env_file:
+      - ./backend/.env.local
     environment:
-      - DEBUG=False
-      - DATABASE_URL=postgresql://postgres:postgres123@db:5432/todo_app
+      - DATABASE_URL=postgresql://${DB_USER:-jimang}:${DB_PASSWORD:-jianmings}@db:5432/todo_app
       - REDIS_URL=redis://redis:6379/0
-      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-your-secret-key-here}
-      - ALLOWED_HOSTS=localhost,127.0.0.1,146.190.90.83
-      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://146.190.90.83:3000
+      - DB_HOST=db
+      - DEBUG=True
+      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
     volumes:
       - ./backend:/app
       - static_volume:/app/static
       - media_volume:/app/media
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - todo-network
+    restart: unless-stopped
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             python manage.py runserver 0.0.0.0:8000"
+    profiles:
+      - development
+
+  # Django Backend - Production
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: todo-app-backend
+    env_file:
+      - ./backend/.env.local
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-jimang}:${DB_PASSWORD:-jianmings}@db:5432/todo_app
+      - REDIS_URL=redis://redis:6379/0
+      - DB_HOST=db
+      - DEBUG=False
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DOMAIN=${DOMAIN:-localhost:3000}
+      - AUTH_COOKIE_SECURE=${AUTH_COOKIE_SECURE:-True}
+      - GOOGLE_AUTH_KEY=${GOOGLE_AUTH_KEY}
+      - GOOGLE_AUTH_SECRET_KEY=${GOOGLE_AUTH_SECRET_KEY}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+    volumes:
+      - static_volume:/app/static
+      - media_volume:/app/media
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
     depends_on:
       - db
       - redis
@@ -56,30 +104,73 @@ services:
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
              gunicorn backend.asgi:application --bind 0.0.0.0:8000 --workers 3"
+    profiles:
+      - production
 
-  # Next.js Frontend
-  frontend:
+  # Next.js Frontend - Development
+  frontend-dev:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
-    container_name: todo-app-frontend
+      dockerfile: Dockerfile.dev
+    container_name: todo-app-frontend-dev
+    env_file:
+      - ./frontend/.env.local
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
-      - NEXTAUTH_URL=http://localhost:3000
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-your-nextauth-secret-here}
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:${BACKEND_PORT:-8000}/api
+      - NEXTAUTH_URL=http://localhost:${FRONTEND_PORT:-3000}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
     volumes:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend-dev
+    networks:
+      - todo-network
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app/src
+          ignore:
+            - node_modules/
+            - .venv/
+            - ../env/
+        - action: rebuild
+          path: ./frontend/package.json
+    profiles:
+      - development
+
+  # Next.js Frontend - Production
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: todo-app-frontend
+    env_file:
+      - ./frontend/.env.local
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
       - backend
     networks:
       - todo-network
     restart: unless-stopped
+    profiles:
+      - production
 
-  # Nginx Reverse Proxy (Optional - for production)
+  # Nginx Reverse Proxy - Production
   nginx:
     image: nginx:alpine
     container_name: todo-app-nginx

@@ -1,0 +1,30 @@
+# Use Node.js 24 LTS image for development (better ARM64 support)
+FROM node:24-bookworm
+
+# Set environment variables
+ENV NODE_ENV=development
+
+# Set work directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install all dependencies (including dev dependencies)
+RUN npm ci && npm cache clean --force
+
+# Copy project files
+COPY . .
+
+# Expose port
+EXPOSE 3000
+
+# Create non-root user
+RUN groupadd -r nodejs && useradd -r -g nodejs nextjs
+
+# Change ownership of the app directory
+RUN chown -R nextjs:nodejs /app
+USER nextjs
+
+# Start the development server
+CMD ["npm", "run", "dev"]

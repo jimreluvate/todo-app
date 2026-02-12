@@ -1,0 +1,58 @@
+name: todo-app
+services:
+- name: db
+  source_dir: backend
+  github:
+    repo: your-username/todo-app
+    branch: main
+  run_command: python manage.py migrate
+  environment_slug: python
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  envs:
+  - key: DATABASE_URL
+    value: ${db.DATABASE_URL}
+  - key: DJANGO_SECRET_KEY
+    value: ${DJANGO_SECRET_KEY}
+  - key: DEBUG
+    value: "False"
+  - key: ALLOWED_HOSTS
+    value: ${APP_DOMAIN}
+  - key: CORS_ALLOWED_ORIGINS
+    value: https://${APP_DOMAIN}
+  http_port: 8000
+  routes:
+  - path: /api
+  - path: /admin
+  - path: /auth
+
+- name: frontend
+  source_dir: frontend
+  github:
+    repo: your-username/todo-app
+    branch: main
+  build_command: npm run build
+  run_command: npm start
+  environment_slug: node-js
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  envs:
+  - key: NEXT_PUBLIC_API_URL
+    value: https://${APP_DOMAIN}/api
+  - key: NEXTAUTH_URL
+    value: https://${APP_DOMAIN}
+  - key: NEXTAUTH_SECRET
+    value: ${NEXTAUTH_SECRET}
+  - key: GOOGLE_CLIENT_ID
+    value: ${GOOGLE_CLIENT_ID}
+  - key: GOOGLE_CLIENT_SECRET
+    value: ${GOOGLE_CLIENT_SECRET}
+  http_port: 3000
+  routes:
+  - path: /
+
+databases:
+- name: db
+  engine: PG
+  version: "15"
+  production: true
